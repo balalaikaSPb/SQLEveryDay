@@ -1,0 +1,132 @@
+USE [ILS]
+GO
+/****** Object:  UserDefinedFunction [dbo].[Shift_Calendar_FUNC]    Script Date: 29.11.2022 11:25:16 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+alter function [dbo].[Week_Calendar_FUNC](
+@FDS date = NULL
+,@FDE date = NULL
+,@COMP nvarchar(50) = NULL
+--,@param2 nvarchar(50) = null
+)
+
+RETURNS @retFindReports TABLE
+(	
+	[Date_WW] [date] NULL,
+	[Week_WW] [nvarchar](20) NULL,
+	[WW_WW] [nvarchar](2) NULL,
+	[Year_WW] [nvarchar](4) NULL,
+	[Month_WW] [nvarchar](2) NULL,
+	[Weekday_WW] [nvarchar](30) NOT NULL,
+	[Today_WW] [nvarchar](30) NULL
+)
+as
+
+BEGIN
+	--SET NOCOUNT ON;
+
+set @FDS = isnull(@FDS ,getdate())
+set @FDE = isnull (@FDE, @FDS)
+set @COMP = isnull(@COMP, N'NT')
+
+declare @ww nvarchar(2), @w1 numeric(2,0), @np numeric(19,0), @nm numeric(19,0), @n numeric(19,0), @formula date, @FD date, @FD1 date, @Start_Date_WW date, @End_Date_WW date, @month nvarchar(2), @year nvarchar(4), @week nvarchar(20), @today nvarchar(30)
+--, @FDS datetime = '2023-10-25 09:00:00.000', @COMP nvarchar(50) = N'NT', @FDE datetime = '2023-10-30 09:00:00.000'
+
+,@1 nvarchar(10) = 'Monday'
+,@2 nvarchar(10) = 'Tuesday'
+,@3 nvarchar(10) = 'Wednesday'
+,@4 nvarchar(10) = 'Thursday'
+,@5 nvarchar(10) = 'Friday'
+,@6 nvarchar(10) = 'Saturday'
+,@7 nvarchar(10) = 'Sunday'
+,@f1 nvarchar(10)
+
+set @np = 0 set @nm = 0 set @formula = @FDS set @FD = @FDS
+
+begin
+while @FDS <= @FDE
+begin
+set @FD1 = cast(concat(DATEPART(year, @FD),'-01-01') as date)
+set @f1 = datename(weekday, @FD1)
+
+set @w1 = case when @f1 = @1 then '1'
+				when @f1 = @2 then '1'
+				when @f1 = @3 then '1'
+				when @f1 = @4 then '1'
+				when @f1 = @5 then '0'
+				when @f1 = @6 then '0'
+				when @f1 = @7 then '0'
+				else '0' end
+
+set @Start_Date_WW = case when @f1 = @1 then @FD1
+							when @f1 = @2 then DATEADD (day , -1 , @FD1)
+							when @f1 = @3 then DATEADD (day , -2 , @FD1)
+							when @f1 = @4 then DATEADD (day , -3 , @FD1)
+							when @f1 = @5 then DATEADD (day , 3 , @FD1)
+							when @f1 = @6 then DATEADD (day , 2 , @FD1)
+							when @f1 = @7 then DATEADD (day , 1 , @FD1)
+							else '0' end
+
+set @End_Date_WW = case when @f1 = @1 then DATEADD (day , 6 , @FD1)
+						when @f1 = @2 then DATEADD (day , 5 , @FD1)
+						when @f1 = @3 then DATEADD (day , 4 , @FD1)
+						when @f1 = @4 then DATEADD (day , 3 , @FD1)
+						when @f1 = @5 then DATEADD (day , 3+6 , @FD1)
+						when @f1 = @6 then DATEADD (day , 2+6 , @FD1)
+						when @f1 = @7 then DATEADD (day , 1+6 , @FD1)
+						else '0' end
+
+set @ww = case when @formula between @Start_Date_WW and @End_Date_WW then '01'
+				when @formula < @Start_Date_WW then '00'
+				else null end
+
+begin
+	while @COMP = N'NT' and @FD <= @FDE and @ww is null
+			begin
+			set @nm = @nm+1
+			set @formula = DATEADD (day , -7*@nm , @FD)
+			set @ww = case when @formula between @Start_Date_WW and @End_Date_WW then format(@nm+1, '00') else @ww end
+			if 
+				@formula between @Start_Date_WW and @End_Date_WW
+				or @nm>99
+			break else continue
+			end
+		set @n = @np+@nm
+		--select @formula, @np, @n
+
+set @week = concat(DATEPART(year, @FD), ', W' , @ww)
+set @month = format(DATEPART(month, @FD), '00')
+set @year = format(DATEPART(year, @FD), '0000')
+--set @yymm = concat(DATEPART(year,@Start_Date_WW),'-',DATEPART(month,@Start_Date_WW))
+
+insert @retFindReports
+select
+@FD as 'Date_WW'
+,@week as 'Week_WW'
+,@ww as 'WW_WW'
+,@year as 'Year_WW'
+,@month as 'Month_WW'
+,datename(weekday,@FD) as 'Weekday_WW'
+,case when @FD = cast(getdate() as date) then 'Current day' else '' end as 'Today_WW'
+--,@n as 'Number_of_Cycles'
+
+set @FD = DATEADD (day , 1 , @FD)
+set @formula = @FD
+set @np = 0 set @nm = 0
+end
+if (@FD > @FDE)
+break else continue
+end
+end
+-----------ПРОВЕРКА---------------start--------
+--select * from @retFindReports
+-----------ПРОВЕРКА---------------end----------
+
+return
+END
+
+--declare @start date = '2022-11-01', @end datetime = '2024-04-01' select * from [dbo].[Nokian_Week_Calendar_FUNC] (@start, @end, 'NT')
+--select * from [dbo].[Nokian_Week_Calendar_FUNC] (default, default, default) as NWC
