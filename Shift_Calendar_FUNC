@@ -1,0 +1,151 @@
+USE [ILS]
+GO
+/****** Object:  UserDefinedFunction [dbo].[Shift_Calendar_FUNC]    Script Date: 01.12.2022 16:35:53 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+ALTER function [dbo].[Shift_Calendar_FUNC](
+@FDS datetime = NULL
+,@FDE datetime = NULL
+,@COMP nvarchar(50) = NULL
+--,@param2 nvarchar(50) = null
+)
+
+RETURNS @retFindReports TABLE
+(	
+	[Week_SW] [nvarchar](30) NULL,
+	[Start_DateTime_SW] [datetime] NULL,
+	--[Start_Date_SW] [date] NULL,
+	--[Start_Time_SW] [time](3) NOT NULL,
+	[Start_Weekday_SW] [nvarchar](30) NOT NULL,
+	[End_DateTime_SW] [datetime] NULL,
+	--[End_Date_SW] [date] NULL,
+	--[Current_Date_SW] [datetime] NULL,
+	--[End_Time_SW] [time](3) NOT NULL,
+	[End_Weekday_SW] [nvarchar](30) NOT NULL,
+	[Shift_SW] [nvarchar](30) NULL,
+	[Number_SW] [numeric](19, 0) NULL,
+	[Discription_SW] [nvarchar](100) NULL,
+	[Times_of_Day_SW] [nvarchar](30) NULL,
+	[Time_Dis_SW] [nvarchar](50) NULL,
+	[Sequence_SW] [nvarchar](50) NULL,
+	[Company_SW] [nvarchar](50) NULL,
+	[Today_SW] [nvarchar](30) NULL
+)
+as
+
+BEGIN
+	--SET NOCOUNT ON;
+
+set @FDS = isnull(@FDS ,getdate())
+set @FDE = isnull (@FDE, @FDS)
+set @COMP = isnull(@COMP, N'NT')
+
+declare @np numeric(19,0), @nm numeric(19,0), @n numeric(19,0), @formula datetime, @FD datetime, @Start_Date_SW date, @End_Date_SW date, @Start_Time_SW time(3), @End_Time_SW time(3), @Start_DateTime_SW datetime, @End_DateTime_SW datetime, @week nvarchar(30), @today nvarchar(30)
+--, @FDS datetime = '2023-10-25 09:00:00.000', @COMP nvarchar(50) = N'NT', @FDE datetime = '2023-10-30 09:00:00.000'
+set @np = 0 set @nm = 0 set @FD = @FDS set @formula = @FDS
+
+set @Start_Date_SW = case when cast(@FD as time(3)) between cast('00:00:00.000' as time(3)) and cast('07:59:59.997' as time(3)) then cast(@FD-1 as date) else cast(@FD as date) end
+set @End_Date_SW = case when cast(@FD as time(3)) between cast('20:00:00.000' as time(3)) and cast('23:59:59.997' as time(3)) then cast(@FD+1 as date) else cast(@FD as date) end
+set @Start_Time_SW = case when cast(@FD as time(3)) between cast('08:00:00.000' as time(3)) and cast('19:59:59.997' as time(3)) then cast('08:00:00.000' as time(3)) else cast('20:00:00.000' as time(3)) end
+set @End_Time_SW = case when cast(@FD as time(3)) between cast('08:00:00.000' as time(3)) and cast('19:59:59.997' as time(3)) then cast('19:59:59.997' as time(3)) else cast('07:59:59.997' as time(3)) end
+set @Start_DateTime_SW = cast(concat(@Start_Date_SW, ' ', @Start_Time_SW) as datetime)
+set @End_DateTime_SW = cast(concat(@End_Date_SW, ' ', @End_Time_SW) as datetime)
+
+--declare @retFindReports TABLE
+--(
+--	[Current_Date_SW] [datetime] NULL,
+--	[Start_Time_SW] [time] NOT NULL,
+--	[End_Time_SW] [time] NOT NULL,
+--	[Shift_SW] [nvarchar](30) NULL,
+--	[Number_SW] [numeric](19, 0) NULL,
+--	[Discription_SW] [nvarchar](100) NULL,
+--	[Times_of_Day_SW] [nvarchar](30) NULL,
+--	[Time_Dis_SW] [nvarchar](50) NULL,
+--	[Sequence_SW] [nvarchar](50) NULL,
+--	[Company_SW] [nvarchar](50) NULL
+--)
+begin
+while (select top 1 User_Def3 from NOKIAN_Shift_Work_NT where @COMP = User_Def3) is not null and @FDS <= @FDE
+
+--if @COMP = N'NT'
+	Begin
+	while (select start_date from NOKIAN_Shift_Work_NT where @FD between Start_Date and End_Date and @COMP = User_Def3) is null
+	begin
+		while
+		@FD > (select min(start_date) from NOKIAN_Shift_Work_NT where @COMP = User_Def3)
+			begin
+				set @nm = @nm+1
+				set @formula = (@FD-8*@nm)
+				if
+					(select start_date from NOKIAN_Shift_Work_NT where @formula between Start_Date and End_Date and @COMP = User_Def3) is not null
+					or @nm>9999
+				break else continue
+			end
+		set @n = @np+@nm
+		--select @formula, @nm, @n
+		while
+		@FD < (select max(start_date) from NOKIAN_Shift_Work_NT where @COMP = User_Def3)
+			begin
+				set @np = @np+1
+				set @formula = (@FD+8*@np)
+				if
+					(select start_date from NOKIAN_Shift_Work_NT where @formula between Start_Date and End_Date and @COMP = User_Def3) is not null
+					or @np>9999
+				break else continue
+			end
+		set @n = @np+@nm
+		--select @formula, @np, @n
+		break
+	end
+
+set @week = (select NWC.Week_WW from [dbo].[Nokian_Week_Calendar_FUNC] (cast(@Start_DateTime_SW as date), default, default) as NWC)
+set @today = case when getdate() between @Start_DateTime_SW and @End_DateTime_SW then 'Current shift'
+				when DATEADD (hour , 12 , getdate()) between @Start_DateTime_SW and @End_DateTime_SW then 'Next shift'
+				when DATEADD (hour , -12 , getdate()) between @Start_DateTime_SW and @End_DateTime_SW then 'Previous shift'
+			else '' end
+
+insert @retFindReports
+select
+@week as 'Week_SW',
+@Start_DateTime_SW as 'Start_DateTime_SW'
+--,cast(@Start_DateTime_SW as date) as 'Start_Date_SW'
+--,cast(sw.Start_Date as time(3)) as 'Start_Time_SW'
+,datename(weekday,@Start_DateTime_SW) as 'Start_Weekday_SW'
+,@End_DateTime_SW as 'End_DateTime_SW'
+--,cast(@End_DateTime_SW as date) as 'End_Date_SW'
+--,@FD as 'Current_Date_SW'
+--,cast(sw.End_Date as time(3)) as 'End_Time_SW'
+,datename(weekday,@End_DateTime_SW) as 'End_Weekday_SW'
+,Shift as 'Shift_SW'
+,Number as 'Number_SW'
+,Discription as 'Discription_SW'
+,Times_of_Day as 'Times_of_Day_SW'
+,User_Def1 as 'Time_Dis_SW'
+,User_Def2 as 'Sequence_SW'
+,User_Def3 as 'Company_SW'
+,@today as 'Today_SW'
+--,@n as 'Number_of_Cycles'
+from NOKIAN_Shift_Work_NT as SW where @formula between sw.Start_Date and sw.End_Date and @COMP = User_Def3
+
+
+set @FD = DATEADD (hour , 12 , @Start_DateTime_SW)
+set @Start_DateTime_SW = DATEADD (hour , 12 , @Start_DateTime_SW)
+set @End_DateTime_SW = DATEADD (hour , 12 , @End_DateTime_SW)
+set @formula = @FD
+set @np = 0 set @nm = 0
+if (@Start_DateTime_SW > @FDE)
+break else continue
+end
+end
+-----------ПРОВЕРКА---------------start--------
+--select * from @retFindReports
+-----------ПРОВЕРКА---------------end----------
+
+return
+END
+
+--declare @start datetime = '2022-11-01 22:59:59', @end datetime = '2023-04-01 18:59:59' select * from Nokian_Shift_Calendar_FUNC (@start, @end, 'NT')
+--select * from Nokian_Shift_Calendar_FUNC (default, default, default) as NSC
